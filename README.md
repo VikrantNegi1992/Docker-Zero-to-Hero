@@ -360,3 +360,345 @@ latest: digest: sha256:6e49841ad9e720a7baedcd41f9b666fcd7b583151d0763fe78101bb82
 ```
 
 ### You must be feeling like a champ already 
+
+
+# Distroless Images and Multi-Stage Docker Builds
+
+## Overview
+
+This document explains:
+
+* Distroless Images
+* Multi-Stage Docker Builds
+* Benefits and drawbacks
+* Example Dockerfiles
+* Best practices
+
+---
+
+# Distroless Images
+
+## What are Distroless Images?
+
+Distroless images are minimal container images that contain only:
+
+* Application code
+* Runtime dependencies
+* Required libraries
+
+They do NOT include:
+
+* Shells (`bash`, `sh`)
+* Package managers (`apt`, `yum`, `apk`)
+* Debugging tools (`curl`, `wget`, `ping`)
+* Unnecessary Linux utilities
+
+The purpose is to create lightweight and secure production containers.
+
+Official project:
+https://github.com/GoogleContainerTools/distroless
+
+---
+
+## Benefits of Distroless Images
+
+### 1. Smaller Image Size
+
+Removing unnecessary packages reduces image size significantly.
+
+Benefits:
+
+* Faster image pull
+* Faster deployment
+* Reduced storage usage
+
+Example:
+
+| Image Type   | Approx Size   |
+| ------------ | ------------- |
+| Ubuntu-based | 100–200 MB    |
+| Alpine-based | 10–30 MB      |
+| Distroless   | Often smaller |
+
+---
+
+### 2. Better Security
+
+Distroless images reduce the attack surface because they exclude:
+
+* Shell access
+* Package managers
+* Extra binaries
+
+Benefits:
+
+* Fewer vulnerabilities (CVEs)
+* Better production security
+* Reduced exploitation possibilities
+
+---
+
+### 3. Cleaner Runtime Environment
+
+Distroless images encourage:
+
+* Immutable infrastructure
+* Proper separation of build/runtime stages
+* Production-only dependencies
+
+---
+
+# Traditional vs Distroless Dockerfile
+
+## Traditional Dockerfile
+
+```dockerfile
+FROM node:20
+
+WORKDIR /app
+
+COPY . .
+
+RUN npm install
+
+CMD ["node", "server.js"]
+```
+
+This image contains:
+
+* Full operating system packages
+* Shell
+* Package manager
+* Many unnecessary utilities
+
+---
+
+## Distroless Dockerfile
+
+```dockerfile
+# Build stage
+FROM node:20 AS builder
+
+WORKDIR /app
+
+COPY . .
+
+RUN npm install
+
+# Runtime stage
+FROM gcr.io/distroless/nodejs20
+
+WORKDIR /app
+
+COPY --from=builder /app .
+
+CMD ["server.js"]
+```
+
+Final runtime image contains mostly:
+
+* Node.js runtime
+* Application files
+* Required dependencies
+
+---
+
+# Drawbacks of Distroless Images
+
+## 1. Difficult Debugging
+
+You usually cannot run:
+
+```bash
+docker exec -it <container> sh
+```
+
+because no shell exists inside the container.
+
+---
+
+## 2. Missing Runtime Utilities
+
+Applications depending on tools like:
+
+* curl
+* bash
+* ping
+* wget
+
+may fail unless explicitly included.
+
+---
+
+# Common Distroless Images
+
+| Image             | Purpose              |
+| ----------------- | -------------------- |
+| distroless/static | Static binaries      |
+| distroless/base   | Minimal runtime      |
+| distroless/nodejs | Node.js applications |
+| distroless/java   | Java applications    |
+| distroless/python | Python applications  |
+
+---
+
+# Multi-Stage Docker Builds
+
+## What is a Multi-Stage Build?
+
+A multi-stage build uses multiple `FROM` statements in a single Dockerfile.
+
+It separates:
+
+* Build environment
+* Runtime environment
+
+This helps create smaller and cleaner production images.
+
+---
+
+# Benefits of Multi-Stage Builds
+
+* Smaller final image
+* Better security
+* Cleaner runtime container
+* No unnecessary build tools in production
+* Improved deployment speed
+
+---
+
+# Multi-Stage Build Example
+
+## Python Example
+
+```dockerfile
+# Stage 1 - Build
+FROM python:3.12 AS builder
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Stage 2 - Runtime
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY --from=builder /app /app
+
+CMD ["python", "app.py"]
+```
+
+---
+
+# Distroless + Multi-Stage Example
+
+```dockerfile
+# Stage 1 - Build
+FROM golang:1.22 AS builder
+
+WORKDIR /src
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o app
+
+# Stage 2 - Distroless Runtime
+FROM gcr.io/distroless/static-debian12
+
+COPY --from=builder /src/app /app
+
+CMD ["/app"]
+```
+
+This is a common production-grade approach.
+
+---
+
+# Distroless vs Alpine
+
+| Feature          | Distroless | Alpine |
+| ---------------- | ---------- | ------ |
+| Shell Available  | No         | Yes    |
+| Package Manager  | No         | apk    |
+| Debugging        | Harder     | Easier |
+| Security         | Excellent  | Good   |
+| Image Size       | Very Small | Small  |
+| Production Usage | Excellent  | Good   |
+
+---
+
+# Best Practices
+
+## Recommended
+
+* Use multi-stage builds for production
+* Use distroless images for runtime containers
+* Keep runtime images minimal
+* Pin image versions
+* Run containers as non-root users
+* Scan images for vulnerabilities
+
+---
+
+## Avoid
+
+* Installing unnecessary packages
+* Running containers as root
+* Keeping build tools in production images
+* Using unpinned latest tags
+
+---
+
+# When to Use Distroless Images
+
+## Good Use Cases
+
+* Kubernetes workloads
+* Microservices
+* APIs
+* Production deployments
+* Security-sensitive applications
+* Go applications
+* Java services
+* Node.js backends
+
+---
+
+## Less Suitable For
+
+* Heavy debugging environments
+* Local development containers
+* Applications requiring shell access
+* Legacy applications depending on OS tools
+
+---
+
+# Summary
+
+| Concept           | Purpose                                    |
+| ----------------- | ------------------------------------------ |
+| Multi-Stage Build | Separate build and runtime environments    |
+| Distroless Image  | Minimal and secure runtime image           |
+| Combined Usage    | Small, secure, production-grade containers |
+
+---
+
+# References
+
+## Distroless Images
+
+https://github.com/GoogleContainerTools/distroless
+
+## Docker Documentation
+
+https://docs.docker.com/
+
+## Multi-Stage Docker Builds
+
+https://docs.docker.com/build/building/multi-stage/
+
